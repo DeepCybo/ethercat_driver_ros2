@@ -23,80 +23,92 @@
 
 namespace ethercat_driver
 {
-CallbackReturn EthercatDriver::on_init(
-  const hardware_interface::HardwareInfo & info)
-{
-  if (hardware_interface::SystemInterface::on_init(info) != CallbackReturn::SUCCESS) {
-    return CallbackReturn::ERROR;
-  }
+  CallbackReturn EthercatDriver::on_init(
+      const hardware_interface::HardwareComponentInterfaceParams &params)
+  {
+    if (hardware_interface::SystemInterface::on_init(params) != CallbackReturn::SUCCESS)
+    {
+      return CallbackReturn::ERROR;
+    }
 
-  const std::lock_guard<std::mutex> lock(ec_mutex_);
-  activated_ = false;
+    const std::lock_guard<std::mutex> lock(ec_mutex_);
+    activated_ = false;
 
-  hw_joint_states_.resize(info_.joints.size());
-  for (uint j = 0; j < info_.joints.size(); j++) {
-    hw_joint_states_[j].resize(
-      info_.joints[j].state_interfaces.size(),
-      std::numeric_limits<double>::quiet_NaN());
-  }
-  hw_sensor_states_.resize(info_.sensors.size());
-  for (uint s = 0; s < info_.sensors.size(); s++) {
-    hw_sensor_states_[s].resize(
-      info_.sensors[s].state_interfaces.size(),
-      std::numeric_limits<double>::quiet_NaN());
-  }
-  hw_gpio_states_.resize(info_.gpios.size());
-  for (uint g = 0; g < info_.gpios.size(); g++) {
-    hw_gpio_states_[g].resize(
-      info_.gpios[g].state_interfaces.size(),
-      std::numeric_limits<double>::quiet_NaN());
-  }
-  hw_joint_commands_.resize(info_.joints.size());
-  for (uint j = 0; j < info_.joints.size(); j++) {
-    hw_joint_commands_[j].resize(
-      info_.joints[j].command_interfaces.size(),
-      std::numeric_limits<double>::quiet_NaN());
-  }
-  hw_sensor_commands_.resize(info_.sensors.size());
-  for (uint s = 0; s < info_.sensors.size(); s++) {
-    hw_sensor_commands_[s].resize(
-      info_.sensors[s].command_interfaces.size(),
-      std::numeric_limits<double>::quiet_NaN());
-  }
-  hw_gpio_commands_.resize(info_.gpios.size());
-  for (uint g = 0; g < info_.gpios.size(); g++) {
-    hw_gpio_commands_[g].resize(
-      info_.gpios[g].command_interfaces.size(),
-      std::numeric_limits<double>::quiet_NaN());
-  }
+    hw_joint_states_.resize(info_.joints.size());
+    for (uint j = 0; j < info_.joints.size(); j++)
+    {
+      hw_joint_states_[j].resize(
+          info_.joints[j].state_interfaces.size(),
+          std::numeric_limits<double>::quiet_NaN());
+    }
+    hw_sensor_states_.resize(info_.sensors.size());
+    for (uint s = 0; s < info_.sensors.size(); s++)
+    {
+      hw_sensor_states_[s].resize(
+          info_.sensors[s].state_interfaces.size(),
+          std::numeric_limits<double>::quiet_NaN());
+    }
+    hw_gpio_states_.resize(info_.gpios.size());
+    for (uint g = 0; g < info_.gpios.size(); g++)
+    {
+      hw_gpio_states_[g].resize(
+          info_.gpios[g].state_interfaces.size(),
+          std::numeric_limits<double>::quiet_NaN());
+    }
+    hw_joint_commands_.resize(info_.joints.size());
+    for (uint j = 0; j < info_.joints.size(); j++)
+    {
+      hw_joint_commands_[j].resize(
+          info_.joints[j].command_interfaces.size(),
+          std::numeric_limits<double>::quiet_NaN());
+    }
+    hw_sensor_commands_.resize(info_.sensors.size());
+    for (uint s = 0; s < info_.sensors.size(); s++)
+    {
+      hw_sensor_commands_[s].resize(
+          info_.sensors[s].command_interfaces.size(),
+          std::numeric_limits<double>::quiet_NaN());
+    }
+    hw_gpio_commands_.resize(info_.gpios.size());
+    for (uint g = 0; g < info_.gpios.size(); g++)
+    {
+      hw_gpio_commands_[g].resize(
+          info_.gpios[g].command_interfaces.size(),
+          std::numeric_limits<double>::quiet_NaN());
+    }
 
-  for (uint j = 0; j < info_.joints.size(); j++) {
-    RCLCPP_INFO(rclcpp::get_logger("EthercatDriver"), "joints");
-    // check all joints for EC modules and load into ec_modules_
-    auto module_params = getEcModuleParam(info_.original_xml, info_.joints[j].name, "joint");
-    ec_module_parameters_.insert(
-      ec_module_parameters_.end(), module_params.begin(), module_params.end());
-    for (auto i = 0ul; i < module_params.size(); i++) {
-      for (auto k = 0ul; k < info_.joints[j].state_interfaces.size(); k++) {
-        module_params[i]["state_interface/" +
-          info_.joints[j].state_interfaces[k].name] = std::to_string(k);
-      }
-      for (auto k = 0ul; k < info_.joints[j].command_interfaces.size(); k++) {
-        module_params[i]["command_interface/" +
-          info_.joints[j].command_interfaces[k].name] = std::to_string(k);
-      }
-      try {
-        auto module = ec_loader_.createSharedInstance(module_params[i].at("plugin"));
-        if (!module->setupSlave(
-            module_params[i], &hw_joint_states_[j], &hw_joint_commands_[j]))
+    for (uint j = 0; j < info_.joints.size(); j++)
+    {
+      RCLCPP_INFO(rclcpp::get_logger("EthercatDriver"), "joints");
+      // check all joints for EC modules and load into ec_modules_
+      auto module_params = getEcModuleParam(info_.original_xml, info_.joints[j].name, "joint");
+      ec_module_parameters_.insert(
+          ec_module_parameters_.end(), module_params.begin(), module_params.end());
+      for (auto i = 0ul; i < module_params.size(); i++)
+      {
+        for (auto k = 0ul; k < info_.joints[j].state_interfaces.size(); k++)
         {
-          RCLCPP_FATAL(
-            rclcpp::get_logger("EthercatDriver"),
-            "Setup of Joint module %li FAILED.", i + 1);
-          return CallbackReturn::ERROR;
+          module_params[i]["state_interface/" +
+                           info_.joints[j].state_interfaces[k].name] = std::to_string(k);
         }
-        ec_modules_.push_back(module);
-      } catch (pluginlib::PluginlibException & ex) {
+        for (auto k = 0ul; k < info_.joints[j].command_interfaces.size(); k++)
+        {
+          module_params[i]["command_interface/" +
+                           info_.joints[j].command_interfaces[k].name] = std::to_string(k);
+        }
+        try
+        {
+          auto module = ec_loader_.createSharedInstance(module_params[i].at("plugin"));
+          if (!module->setupSlave(
+                  module_params[i], &hw_joint_states_[j], &hw_joint_commands_[j]))
+          {
+            RCLCPP_FATAL(
+                rclcpp::get_logger("EthercatDriver"),
+                "Setup of Joint module %li FAILED.", i + 1);
+            return CallbackReturn::ERROR;
+          }
+          ec_modules_.push_back(module);
+        } catch (pluginlib::PluginlibException & ex) {
         RCLCPP_FATAL(
           rclcpp::get_logger("EthercatDriver"),
           "The plugin of %s failed to load for some reason. Error: %s\n",
@@ -176,7 +188,7 @@ CallbackReturn EthercatDriver::on_init(
   RCLCPP_INFO(rclcpp::get_logger("EthercatDriver"), "Got %li modules", ec_modules_.size());
 
   return CallbackReturn::SUCCESS;
-}
+  }
 
 CallbackReturn EthercatDriver::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
