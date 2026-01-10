@@ -64,6 +64,7 @@ protected:
   int fault_reset_command_interface_index_ = -1;
   bool last_fault_reset_command_ = false;
   double last_position_ = std::numeric_limits<double>::quiet_NaN();
+  int init_counter = 0;  // Counter to ensure default position is set only once
 
   /** returns device state based upon the status_word */
   DeviceState deviceState(uint16_t status_word);
