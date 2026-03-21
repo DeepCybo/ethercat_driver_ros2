@@ -290,7 +290,9 @@ void EcMaster::update(uint32_t domain)
 
   struct timespec t;
 
-  clock_gettime(CLOCK_REALTIME, &t);
+  // Use a monotonic clock for DC application time so NTP/chrony wall-clock
+  // adjustments do not perturb EtherCAT synchronization.
+  clock_gettime(CLOCK_MONOTONIC, &t);
   ecrt_master_application_time(master_, EC_NEWTIMEVAL2NANO(t));
   ecrt_master_sync_reference_clock(master_);
   ecrt_master_sync_slave_clocks(master_);
@@ -349,7 +351,8 @@ void EcMaster::writeData(uint32_t domain)
 
   struct timespec t;
 
-  clock_gettime(CLOCK_REALTIME, &t);
+  // Keep the DC timebase aligned with the loop scheduler's monotonic clock.
+  clock_gettime(CLOCK_MONOTONIC, &t);
   ecrt_master_application_time(master_, EC_NEWTIMEVAL2NANO(t));
   ecrt_master_sync_reference_clock(master_);
   ecrt_master_sync_slave_clocks(master_);
