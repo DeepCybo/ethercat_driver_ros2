@@ -17,6 +17,7 @@
 #include <iostream>
 #include <iomanip>
 #include <memory>
+#include <vector>
 
 #include "rclcpp/rclcpp.hpp"
 #include "ethercat_msgs/srv/get_sdo.hpp"
@@ -39,6 +40,7 @@ void upload(
   data.sdo_index = request->sdo_index;
   data.sdo_entry_subindex = request->sdo_subindex;
   data.slave_position = request->slave_position;
+  data.target = nullptr;
 
   if (!(data_type = get_data_type(request->sdo_data_type))) {
     return_stream << "Invalid data type '" << request->sdo_data_type << "'!";
@@ -47,9 +49,6 @@ void upload(
     RCLCPP_ERROR(rclcpp::get_logger("ethercat_manager"), return_stream.str().c_str());
     return;
   }
-
-  data.target_size = data_type->byteSize;
-  data.target = new uint8_t[data.target_size + 1];
 
   EcMasterAsync master(request->master_id);
   try {
@@ -65,16 +64,47 @@ void upload(
     return;
   }
 
-  try {
-    master.sdo_upload(&data);
-  } catch (MasterException & e) {
-    return_stream << e.what();
+  const bool variable_size_type = data_type->byteSize == 0;
+  std::vector<size_t> candidate_sizes;
+  if (variable_size_type) {
+    // Variable-length SDO types (string/octet_string/unicode_string) need a practical
+    // upload buffer. Retry with progressively larger sizes if ENOBUFS is reported.
+    candidate_sizes = {64, 256, 1024, 4096, 16384};
+  } else {
+    candidate_sizes = {data_type->byteSize};
+  }
+
+  std::string upload_error;
+  bool upload_ok = false;
+  for (const size_t size : candidate_sizes) {
+    data.target_size = size;
+    data.target = new uint8_t[data.target_size + 1];
+
+    try {
+      master.sdo_upload(&data);
+      upload_ok = true;
+      break;
+    } catch (MasterException & e) {
+      upload_error = e.what();
+      if (nullptr != data.target) {
+        delete[] data.target;
+        data.target = nullptr;
+      }
+
+      const bool no_buffer_space = upload_error.find("No buffer space available") != std::string::npos;
+      if (variable_size_type && no_buffer_space) {
+        continue;
+      }
+      break;
+    }
+  }
+
+  if (!upload_ok) {
+    master.close();
+    return_stream << upload_error;
     response->success = false;
     RCLCPP_ERROR(rclcpp::get_logger("ethercat_manager"), return_stream.str().c_str());
     response->sdo_return_message = return_stream.str();
-    if (nullptr != data.target) {
-      delete[] data.target;
-    }
     return;
   }
 
