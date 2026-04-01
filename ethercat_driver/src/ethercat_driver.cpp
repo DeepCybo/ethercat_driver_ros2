@@ -377,6 +377,17 @@ CallbackReturn EthercatDriver::on_configure(
   return CallbackReturn::SUCCESS;
 }
 
+CallbackReturn EthercatDriver::on_cleanup(
+  const rclcpp_lifecycle::State & /*previous_state*/)
+{
+  ec_modules_.clear();
+
+  RCLCPP_INFO(
+    rclcpp::get_logger("EthercatDriver"), "System successfully cleaned up!");
+
+  return CallbackReturn::SUCCESS;
+}
+
 std::vector<hardware_interface::StateInterface>
 EthercatDriver::export_state_interfaces()
 {
