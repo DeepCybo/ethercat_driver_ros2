@@ -42,6 +42,7 @@ public:
   virtual size_t syncSize();
   virtual const ec_pdo_entry_info_t * channels();
   virtual void domains(DomainMap & domains) const;
+  bool configure_pdos() const override;
 
   virtual bool setupSlave(
     std::unordered_map<std::string, std::string> slave_parameters,
@@ -60,6 +61,7 @@ protected:
   std::vector<unsigned int> domain_map_;
   YAML::Node slave_config_;
   uint32_t assign_activate_ = 0;
+  bool configure_pdos_ = true;
 
   /** set up of the drive configuration from yaml node*/
   bool setup_from_config(YAML::Node slave_config);

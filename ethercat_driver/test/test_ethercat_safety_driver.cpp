@@ -22,8 +22,30 @@
 #include <fstream>
 #include <sstream>
 #include <filesystem>
+#include <unordered_map>
+#include <vector>
 
 #include "testHelper_ethercat_safety_driver.hpp"
+
+TEST(TestEthercatDriverDpdkOptions, expectedSlaveWaitCountUsesHighestConfiguredPosition)
+{
+  std::vector<std::unordered_map<std::string, std::string>> module_parameters = {
+    {{"position", "1"}},
+    {{"position", "14"}},
+    {{"name", "no_position"}},
+  };
+
+  EXPECT_EQ(ethercat_driver::expectedSlaveWaitCount(module_parameters), 15);
+}
+
+TEST(TestEthercatDriverDpdkOptions, expectedSlaveWaitCountHandlesSingleMotorBehindJunction)
+{
+  std::vector<std::unordered_map<std::string, std::string>> module_parameters = {
+    {{"position", "1"}},
+  };
+
+  EXPECT_EQ(ethercat_driver::expectedSlaveWaitCount(module_parameters), 2);
+}
 
 TEST(TestEthercatSafetyDriver, getEcTransferModuleParam)
 {

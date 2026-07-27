@@ -49,6 +49,8 @@ public:
   virtual const ec_sync_info_t * syncs() {return NULL;}
   virtual bool initialized() {return true;}
   virtual void set_state_is_operational(bool value) {is_operational_ = value;}
+  /** Whether the master should write PDO assignment/mapping objects for this slave. */
+  virtual bool configure_pdos() const {return true;}
   /** Assign activate DC synchronization. return activate word*/
   virtual int assign_activate_dc_sync() {return 0x00;}
   /** number of elements in the syncs array. */

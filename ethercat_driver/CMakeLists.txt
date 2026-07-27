@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.8)
 project(ethercat_driver)
 
+option(ETHERCAT_DPDK_USERMODE "Build against the IgH DPDK userspace master library" OFF)
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()

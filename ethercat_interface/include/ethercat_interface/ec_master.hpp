@@ -22,6 +22,7 @@
 #include <vector>
 #include <map>
 #include <chrono>
+#include <functional>
 #include <iostream>
 #include "ethercat_interface/ec_slave.hpp"
 #include "ethercat_interface/ec_transfer.hpp"
@@ -31,9 +32,9 @@
 namespace ethercat_interface
 {
 
-inline uint64_t EC_NEWTIMEVAL2NANO(struct timespec & TV)
+inline uint64_t EC_TIMESPEC2NANO(const struct timespec & TV)
 {
-  return (TV.tv_sec - 946684800ULL) * 1000000000ULL + TV.tv_nsec;
+  return static_cast<uint64_t>(TV.tv_sec) * 1000000000ULL + TV.tv_nsec;
 }
 
 class EcMemoryEntry
@@ -120,8 +121,30 @@ struct DomainInfo
 class EcMaster
 {
 public:
+  struct EcMasterOptions
+  {
+    unsigned int master_id = 0;
+    unsigned int userspace_node_id = 0;
+    bool create_userspace_master = false;
+    int wait_for_slave_count = 0;
+  };
+
+  struct EcMasterEcrtApi
+  {
+    std::function<ec_master_t *(unsigned int)> masters_create;
+    std::function<ec_master_t *(unsigned int)> request_master;
+    std::function<int(ec_master_t *, int)> master_wait_for_slave;
+    std::function<void(ec_master_t *)> release_master;
+  };
+
   explicit EcMaster(const unsigned int master = 0);
+  explicit EcMaster(
+    const EcMasterOptions & options,
+    EcMasterEcrtApi api = defaultEcrtApi());
   virtual ~EcMaster();
+
+  static EcMasterEcrtApi defaultEcrtApi();
+  static clockid_t applicationClockId();
 
   /** \brief add a slave device to the master
     * alias and position can be found by running the following command
@@ -151,8 +174,8 @@ public:
   typedef void (* SIMPLECAT_CONTRL_CALLBACK)(void);
   virtual void run(SIMPLECAT_CONTRL_CALLBACK user_callback);
 
-  /** stop the control loop. use within callback, or from a separate thread. */
-  virtual void stop() {running_ = false;}
+  /** stop the control loop and deactivate the EtherCAT master if needed. */
+  virtual void stop();
 
   /** time of last ethercat update, since calling run. stops if stop called.
    *  returns actual time. use elapsedCycles()/frequency for discrete time at last update. */
@@ -276,7 +299,10 @@ protected:
 
   /** EtherCAT master data */
   ec_master_t * master_ = NULL;
+  ec_master_t * masters_ = NULL;
+  EcMasterEcrtApi ecrt_api_;
   ec_master_state_t master_state_ = {};
+  bool active_ = false;
 
   /** map from domain index to domain info */
   std::map<uint32_t, DomainInfo *> domain_info_;
@@ -307,6 +333,9 @@ protected:
   friend struct DomainInfo;
   friend struct EcTransferInfo;
 };
+
+using EcMasterOptions = EcMaster::EcMasterOptions;
+using EcMasterEcrtApi = EcMaster::EcMasterEcrtApi;
 
 }  // namespace ethercat_interface
 

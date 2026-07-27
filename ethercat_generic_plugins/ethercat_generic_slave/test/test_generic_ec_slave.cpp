@@ -252,3 +252,17 @@ TEST_F(GenericEcSlaveTest, SlaveSetupSyncManagerConfig)
   ASSERT_EQ(plugin_->sm_configs_[2].pdo_name, "rpdo");
   ASSERT_EQ(plugin_->sm_configs_[2].watchdog, EC_WD_ENABLE);
 }
+
+TEST_F(GenericEcSlaveTest, SlaveSetupPdoConfigurationFlag)
+{
+  SetUp();
+  ASSERT_TRUE(plugin_->configure_pdos());
+  ASSERT_TRUE(plugin_->setup_from_config(YAML::Load(test_slave_config)));
+  ASSERT_TRUE(plugin_->configure_pdos());
+
+  FriendGenericEcSlave fixed_pdo_plugin;
+  const std::string fixed_pdo_config =
+    std::string("configure_pdos: false\n") + test_slave_config;
+  ASSERT_TRUE(fixed_pdo_plugin.setup_from_config(YAML::Load(fixed_pdo_config)));
+  ASSERT_FALSE(fixed_pdo_plugin.configure_pdos());
+}

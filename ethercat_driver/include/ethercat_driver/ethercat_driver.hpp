@@ -37,6 +37,9 @@ using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface
 namespace ethercat_driver
 {
 
+unsigned int expectedSlaveWaitCount(
+  const std::vector<std::unordered_map<std::string, std::string>> & module_parameters);
+
 class EthercatDriver : public hardware_interface::SystemInterface
 {
 public:
@@ -63,7 +66,7 @@ public:
 
   ETHERCAT_DRIVER_PUBLIC
   CallbackReturn on_cleanup(const rclcpp_lifecycle::State & previous_state) override;
-  
+
   ETHERCAT_DRIVER_PUBLIC
   hardware_interface::return_type read(const rclcpp::Time &, const rclcpp::Duration &) override;
 

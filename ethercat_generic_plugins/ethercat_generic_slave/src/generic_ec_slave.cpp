@@ -54,6 +54,10 @@ void GenericEcSlave::domains(DomainMap & domains) const
 {
   domains = {{0, domain_map_}};
 }
+bool GenericEcSlave::configure_pdos() const
+{
+  return configure_pdos_;
+}
 
 void GenericEcSlave::setup_syncs()
 {
@@ -125,6 +129,9 @@ bool GenericEcSlave::setup_from_config(YAML::Node slave_config)
     }
     if (slave_config["assign_activate"]) {
       assign_activate_ = slave_config["assign_activate"].as<uint32_t>();
+    }
+    if (slave_config["configure_pdos"]) {
+      configure_pdos_ = slave_config["configure_pdos"].as<bool>();
     }
 
     if (slave_config["sm"]) {

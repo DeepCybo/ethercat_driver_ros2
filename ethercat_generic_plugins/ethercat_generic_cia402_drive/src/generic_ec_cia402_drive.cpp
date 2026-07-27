@@ -35,9 +35,11 @@ void EcCiA402Drive::updateState()
     if (state_ != last_state_) {
       RCLCPP_INFO(
         rclcpp::get_logger("EthercatDriver"),
-        "STATE: %s with status word :%d",
+        "STATE: %s with status_word=%u error_code=0x%04X mode_display=%d",
         DEVICE_STATE_STR.at(state_).c_str(),
-        status_word_
+        status_word_,
+        error_code_,
+        mode_of_operation_display_
       );
     }
   }
@@ -81,11 +83,11 @@ void EcCiA402Drive::processData(size_t entry_idx, uint8_t * domain_address)
 
   // setup current position as default position
   if (channel.index == CiA402D_RPDO_POSITION) {
-    if (mode_of_operation_display_ != ModeOfOperation::MODE_NO_MODE && !std::isnan(last_position_) && this->init_counter == 0) {
+    if (mode_of_operation_display_ != ModeOfOperation::MODE_NO_MODE &&
+      !std::isnan(last_position_))
+    {
       channel.default_value =
         channel.factor * last_position_ + channel.offset;
-      RCLCPP_INFO(rclcpp::get_logger("EthercatDriver"), "init_counter: %d", this->init_counter);
-      this->init_counter= this->init_counter+1;
     }
     channel.override_command =
       (mode_of_operation_display_ != ModeOfOperation::MODE_CYCLIC_SYNC_POSITION) ? true : false;
@@ -107,6 +109,17 @@ void EcCiA402Drive::processData(size_t entry_idx, uint8_t * domain_address)
 
   if (channel.index == CiA402D_TPDO_POSITION) {
     last_position_ = channel.last_value;
+  }
+
+  if (channel.index == 0x603F) {
+    error_code_ = channel.last_value;
+    if (error_code_ != last_error_code_) {
+      RCLCPP_INFO(
+        rclcpp::get_logger("EthercatDriver"),
+        "TPDO 0x603F error_code changed: 0x%04X",
+        error_code_);
+      last_error_code_ = error_code_;
+    }
   }
 
   // Special case: StatusWord

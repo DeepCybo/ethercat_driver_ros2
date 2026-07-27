@@ -27,9 +27,43 @@
 #include <sstream>
 #include <bitset>
 #include <cstring>
+#include <thread>
 
 namespace ethercat_interface
 {
+
+namespace
+{
+
+ec_master_t * defaultMastersCreate(unsigned int node_id)
+{
+#if defined(EC_USERMODE) && !EC_ENABLE_DAEMON
+  return ecrt_masters_create(node_id);
+#else
+  (void)node_id;
+  return nullptr;
+#endif
+}
+
+int defaultMasterWaitForSlave(ec_master_t * master, int slave_count)
+{
+#if defined(EC_USERMODE) && !EC_ENABLE_DAEMON
+  return ecrt_master_wait_for_slave(master, slave_count);
+#else
+  (void)master;
+  (void)slave_count;
+  return 0;
+#endif
+}
+
+EcMaster::EcMasterOptions optionsForMasterId(unsigned int master_id)
+{
+  EcMaster::EcMasterOptions options;
+  options.master_id = master_id;
+  return options;
+}
+
+}  // namespace
 
 DomainInfo::DomainInfo(ec_master_t * master)
 {
@@ -53,18 +87,70 @@ DomainInfo::~DomainInfo()
 }
 
 
-EcMaster::EcMaster(const unsigned int master)
+EcMaster::EcMasterEcrtApi EcMaster::defaultEcrtApi()
 {
-  master_ = ecrt_request_master(master);
+  EcMasterEcrtApi api;
+  api.masters_create = defaultMastersCreate;
+  api.request_master = ecrt_request_master;
+  api.master_wait_for_slave = defaultMasterWaitForSlave;
+  api.release_master = ecrt_release_master;
+  return api;
+}
+
+clockid_t EcMaster::applicationClockId()
+{
+  return CLOCK_MONOTONIC;
+}
+
+EcMaster::EcMaster(const unsigned int master)
+: EcMaster(optionsForMasterId(master))
+{
+}
+
+EcMaster::EcMaster(const EcMasterOptions & options, EcMasterEcrtApi api)
+: ecrt_api_(api)
+{
+  if (options.create_userspace_master) {
+    if (!ecrt_api_.masters_create) {
+      printWarning("Userspace master create requested but no create callback is available.");
+      return;
+    }
+    masters_ = ecrt_api_.masters_create(options.userspace_node_id);
+    if (masters_ == NULL) {
+      printWarning("Failed to create userspace master.");
+      return;
+    }
+  }
+
+  if (!ecrt_api_.request_master) {
+    printWarning("Failed to obtain master: no request callback is available.");
+    return;
+  }
+
+  master_ = ecrt_api_.request_master(options.master_id);
   if (master_ == NULL) {
     printWarning("Failed to obtain master.");
     return;
+  }
+
+  if (options.wait_for_slave_count > 0) {
+    if (!ecrt_api_.master_wait_for_slave) {
+      printWarning("Slave wait requested but no wait callback is available.");
+      return;
+    }
+    const int wait_status = ecrt_api_.master_wait_for_slave(
+      master_, options.wait_for_slave_count);
+    if (wait_status) {
+      printWarning("Timed out while waiting for EtherCAT slaves.");
+      return;
+    }
   }
   interval_ = 0;
 }
 
 EcMaster::~EcMaster()
 {
+  stop();
   /*
   for (SlaveInfo & slave : slave_info_) {
     //TODO verify what this piece of code was here for
@@ -75,7 +161,9 @@ EcMaster::~EcMaster()
       delete domain.second;
     }
   }
-  ecrt_release_master(master_);
+  if (master_ != NULL && ecrt_api_.release_master) {
+    ecrt_api_.release_master(master_);
+  }
 }
 
 void EcMaster::addSlave(uint16_t alias, uint16_t position, EcSlave * slave)
@@ -108,11 +196,12 @@ void EcMaster::addSlave(EcSlave * slave)
 
   if (slave->assign_activate_dc_sync()) {
     struct timespec t;
-    clock_gettime(CLOCK_MONOTONIC, &t);
-    ecrt_master_application_time(master_, EC_NEWTIMEVAL2NANO(t));
+    const uint32_t assign_activate = slave->assign_activate_dc_sync();
+    clock_gettime(applicationClockId(), &t);
+    ecrt_master_application_time(master_, EC_TIMESPEC2NANO(t));
     ecrt_slave_config_dc(
       slave_info.config,
-      slave->assign_activate_dc_sync(),
+      assign_activate,
       interval_,
       interval_ - (t.tv_nsec % (interval_)),
       0,
@@ -128,11 +217,19 @@ void EcMaster::addSlave(EcSlave * slave)
   size_t num_syncs = slave->syncSize();
   const ec_sync_info_t * syncs = slave->syncs();
   if (num_syncs > 0) {
-    // configure pdos in slave
-    int pdos_status = ecrt_slave_config_pdos(slave_info.config, num_syncs, syncs);
-    if (pdos_status) {
-      printWarning("Add slave. Failed to configure PDOs");
-      return;
+    if (slave->configure_pdos()) {
+      // configure pdos in slave
+      int pdos_status = ecrt_slave_config_pdos(slave_info.config, num_syncs, syncs);
+      if (pdos_status) {
+        printWarning("Add slave. Failed to configure PDOs");
+        return;
+      }
+    } else {
+      RCLCPP_INFO(
+        rclcpp::get_logger("EthercatDriver"),
+        "Skipping PDO configuration for fixed PDO slave %u:%u.",
+        slave->alias_,
+        slave->position_);
     }
   } else {
     printWarning(
@@ -251,8 +348,8 @@ bool EcMaster::activate()
   }
   // set application time
   struct timespec t;
-  clock_gettime(CLOCK_MONOTONIC, &t);
-  ecrt_master_application_time(master_, EC_NEWTIMEVAL2NANO(t));
+  clock_gettime(applicationClockId(), &t);
+  ecrt_master_application_time(master_, EC_TIMESPEC2NANO(t));
 
   // activate master
   bool activate_status = ecrt_master_activate(master_);
@@ -273,11 +370,34 @@ bool EcMaster::activate()
       return false;
     }
   }
+  active_ = true;
   return true;
+}
+
+void EcMaster::stop()
+{
+  running_ = false;
+  if (master_ == NULL || !active_) {
+    return;
+  }
+
+  const int deactivate_status = ecrt_master_deactivate(master_);
+  if (deactivate_status) {
+    printWarning(
+      "Deactivate. Failed to deactivate master: " + std::to_string(deactivate_status));
+    return;
+  }
+
+  active_ = false;
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
 }
 
 void EcMaster::update(uint32_t domain)
 {
+  struct timespec t;
+  clock_gettime(applicationClockId(), &t);
+  ecrt_master_application_time(master_, EC_TIMESPEC2NANO(t));
+
   // receive process data
   ecrt_master_receive(master_);
 
@@ -308,10 +428,6 @@ void EcMaster::update(uint32_t domain)
     }
   }
 
-  struct timespec t;
-
-  clock_gettime(CLOCK_REALTIME, &t);
-  ecrt_master_application_time(master_, EC_NEWTIMEVAL2NANO(t));
   ecrt_master_sync_reference_clock(master_);
   ecrt_master_sync_slave_clocks(master_);
 
@@ -359,6 +475,10 @@ void EcMaster::readData(uint32_t domain)
 
 void EcMaster::writeData(uint32_t domain)
 {
+  struct timespec t;
+  clock_gettime(applicationClockId(), &t);
+  ecrt_master_application_time(master_, EC_TIMESPEC2NANO(t));
+
   DomainInfo * domain_info = domain_info_.at(domain);
   if (domain_info == NULL) {
     throw std::runtime_error("Null domain info: " + std::to_string(domain));
@@ -371,10 +491,6 @@ void EcMaster::writeData(uint32_t domain)
     }
   }
 
-  struct timespec t;
-
-  clock_gettime(CLOCK_REALTIME, &t);
-  ecrt_master_application_time(master_, EC_NEWTIMEVAL2NANO(t));
   ecrt_master_sync_reference_clock(master_);
   ecrt_master_sync_slave_clocks(master_);
 

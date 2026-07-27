@@ -15,6 +15,8 @@
 #include "ethercat_driver/ethercat_driver.hpp"
 
 #include <tinyxml2.h>
+#include <algorithm>
+#include <cctype>
 #include <string>
 #include <regex>
 
@@ -23,6 +25,60 @@
 
 namespace ethercat_driver
 {
+
+namespace
+{
+
+bool defaultCreateUserspaceMaster()
+{
+#ifdef ETHERCAT_INTERFACE_DPDK_USERMODE
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool bool_from_string(const std::string & value)
+{
+  std::string lowered = value;
+  std::transform(
+    lowered.begin(), lowered.end(), lowered.begin(),
+    [](unsigned char c) {return static_cast<char>(std::tolower(c));});
+
+  if (lowered == "1" || lowered == "true" || lowered == "yes" || lowered == "on") {
+    return true;
+  }
+  if (lowered == "0" || lowered == "false" || lowered == "no" || lowered == "off") {
+    return false;
+  }
+  throw std::invalid_argument("invalid bool value: " + value);
+}
+
+bool bool_parameter_or_default(
+  const std::unordered_map<std::string, std::string> & parameters,
+  const std::string & name,
+  bool default_value)
+{
+  const auto it = parameters.find(name);
+  if (it == parameters.end()) {
+    return default_value;
+  }
+  return bool_from_string(it->second);
+}
+
+unsigned int uint_parameter_or_default(
+  const std::unordered_map<std::string, std::string> & parameters,
+  const std::string & name,
+  unsigned int default_value)
+{
+  const auto it = parameters.find(name);
+  if (it == parameters.end()) {
+    return default_value;
+  }
+  return std::stoul(it->second);
+}
+
+}  // namespace
 
 unsigned int uint_from_string(const std::string & str)
 {
@@ -33,6 +89,20 @@ unsigned int uint_from_string(const std::string & str)
     return std::stoul(s, nullptr, 16);
   }
   return std::stoul(s);
+}
+
+unsigned int expectedSlaveWaitCount(
+  const std::vector<std::unordered_map<std::string, std::string>> & module_parameters)
+{
+  unsigned int expected_count = 0;
+  for (const auto & module : module_parameters) {
+    const auto position = module.find("position");
+    if (position == module.end()) {
+      continue;
+    }
+    expected_count = std::max(expected_count, uint_from_string(position->second) + 1);
+  }
+  return expected_count;
 }
 
 void getTransferMemoryInfo(
@@ -465,21 +535,50 @@ EthercatDriver::export_command_interfaces()
 
 CallbackReturn EthercatDriver::setupMaster()
 {
-  unsigned int master_id = 666;
+  ethercat_interface::EcMasterOptions options;
+  options.master_id = 666;
   // Get master id
   if (info_.hardware_parameters.find("master_id") == info_.hardware_parameters.end()) {
     // Master id was not provided, default to 0
-    master_id = 0;
+    options.master_id = 0;
   } else {
     try {
-      master_id = std::stoul(info_.hardware_parameters["master_id"]);
+      options.master_id = std::stoul(info_.hardware_parameters["master_id"]);
     } catch (std::exception & e) {
       RCLCPP_FATAL(
         rclcpp::get_logger("EthercatDriver"), "Invalid master id (%s)!", e.what());
       return CallbackReturn::ERROR;
     }
   }
-  master_ = std::make_shared<ethercat_interface::EcMaster>(master_id);
+
+  try {
+    options.userspace_node_id = uint_parameter_or_default(
+      info_.hardware_parameters, "userspace_node_id", 0);
+    options.create_userspace_master = bool_parameter_or_default(
+      info_.hardware_parameters,
+      "create_userspace_master",
+      defaultCreateUserspaceMaster());
+    const bool wait_for_slaves = bool_parameter_or_default(
+      info_.hardware_parameters, "wait_for_slaves", options.create_userspace_master);
+
+    if (wait_for_slaves) {
+      options.wait_for_slave_count = expectedSlaveWaitCount(ec_module_parameters_);
+      options.wait_for_slave_count = uint_parameter_or_default(
+        info_.hardware_parameters,
+        "expected_slave_count",
+        options.wait_for_slave_count);
+      options.wait_for_slave_count = uint_parameter_or_default(
+        info_.hardware_parameters,
+        "wait_for_slave_count",
+        options.wait_for_slave_count);
+    }
+  } catch (std::exception & e) {
+    RCLCPP_FATAL(
+      rclcpp::get_logger("EthercatDriver"), "Invalid EtherCAT master option (%s)!", e.what());
+    return CallbackReturn::ERROR;
+  }
+
+  master_ = std::make_shared<ethercat_interface::EcMaster>(options);
 
   return CallbackReturn::SUCCESS;
 }
@@ -557,10 +656,16 @@ CallbackReturn EthercatDriver::on_activate(
     RCLCPP_INFO(rclcpp::get_logger("EthercatDriver"), "Transfer network configured!");
   }
 
-  // start after one second
+  // Start cyclic exchange on the next control tick after master activation.
+  // Waiting a full second here leaves DC/SM watchdog-sensitive slaves without
+  // fresh process data during the transition to OP.
   struct timespec t;
   clock_gettime(CLOCK_MONOTONIC, &t);
-  t.tv_sec++;
+  t.tv_nsec += master_->getInterval();
+  while (t.tv_nsec >= 1000000000) {
+    t.tv_nsec -= 1000000000;
+    t.tv_sec++;
+  }
 
   bool running = true;
   while (running) {

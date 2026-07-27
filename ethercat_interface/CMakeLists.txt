@@ -20,8 +20,26 @@ find_package(rclcpp REQUIRED)
 # EtherLab
 set(ETHERLAB_DIR /usr)
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+option(ETHERCAT_DPDK_USERMODE "Build against the IgH DPDK userspace master library" OFF)
 
-find_library(ETHERCAT_LIB ethercat HINTS ${ETHERLAB_DIR}/lib)
+if(ETHERCAT_DPDK_USERMODE)
+  find_library(ETHERCAT_LIB ethercatd HINTS ${ETHERLAB_DIR}/lib)
+  set(ETHERCAT_INTERFACE_COMPILE_DEFINITIONS
+    ETHERCAT_INTERFACE_DPDK_USERMODE
+    EC_USERMODE
+    EC_ENABLE_DAEMON=0
+  )
+else()
+  find_library(ETHERCAT_LIB ethercat HINTS ${ETHERLAB_DIR}/lib)
+  set(ETHERCAT_INTERFACE_COMPILE_DEFINITIONS "")
+endif()
+
+if(NOT ETHERCAT_LIB)
+  message(FATAL_ERROR "EtherCAT library not found")
+endif()
+
+message(STATUS "EtherCAT library: ${ETHERCAT_LIB}")
+message(STATUS "EtherCAT DPDK userspace mode: ${ETHERCAT_DPDK_USERMODE}")
 
 ament_export_include_directories(
   include
@@ -45,6 +63,7 @@ target_include_directories(
 )
 
 target_link_libraries(${PROJECT_NAME} ${ETHERCAT_LIB})
+target_compile_definitions(${PROJECT_NAME} PUBLIC ${ETHERCAT_INTERFACE_COMPILE_DEFINITIONS})
 
 ament_target_dependencies(
   ${PROJECT_NAME}
@@ -80,6 +99,15 @@ if(BUILD_TESTING)
   target_link_libraries(test_ec_pdo_channel_manager
     ${PROJECT_NAME}
     yaml-cpp)
+
+  ament_add_gmock(
+    test_ec_master_userspace_init
+    test/test_ec_master_userspace_init.cpp
+  )
+  target_include_directories(test_ec_master_userspace_init PRIVATE include ${ETHERLAB_DIR}/include)
+  target_link_libraries(test_ec_master_userspace_init
+    ${PROJECT_NAME}
+    yaml-cpp)
 endif()
 
 ## EXPORTS
@@ -88,8 +116,9 @@ ament_export_include_directories(
 )
 ament_export_libraries(
   ${PROJECT_NAME}
-  ${ETHERCAT_LIBRARY}
+  ${ETHERCAT_LIB}
 )
+ament_export_definitions(${ETHERCAT_INTERFACE_COMPILE_DEFINITIONS})
 ament_export_dependencies(
   rclcpp
 )

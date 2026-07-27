@@ -56,6 +56,8 @@ protected:
   uint32_t counter_ = 0;
   uint16_t last_status_word_ = -1;
   uint16_t status_word_ = 0;
+  uint16_t last_error_code_ = std::numeric_limits<uint16_t>::max();
+  uint16_t error_code_ = 0;
   uint16_t control_word_ = 0;
   DeviceState last_state_ = STATE_START;
   DeviceState state_ = STATE_START;
@@ -66,8 +68,7 @@ protected:
   int fault_reset_command_interface_index_ = -1;
   bool last_fault_reset_command_ = false;
   double last_position_ = std::numeric_limits<double>::quiet_NaN();
-  int init_counter = 0;  // Counter to ensure default position is set only once
-  
+
   /** returns device state based upon the status_word */
   DeviceState deviceState(uint16_t status_word);
   /** returns the control word that will take device from state to next desired state */
