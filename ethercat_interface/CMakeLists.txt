@@ -18,24 +18,27 @@ find_package(ament_cmake_ros REQUIRED)
 find_package(rclcpp REQUIRED)
 
 # EtherLab
-set(ETHERLAB_DIR /usr)
+set(ETHERLAB_LOCAL_DIR /usr/local/etherlab)
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 option(ETHERCAT_DPDK_USERMODE "Build against the IgH DPDK userspace master library" OFF)
 
+find_path(ETHERCAT_INCLUDE_DIR NAMES ecrt.h PATHS ${ETHERLAB_LOCAL_DIR}/include)
 if(ETHERCAT_DPDK_USERMODE)
-  find_library(ETHERCAT_LIB ethercatd HINTS ${ETHERLAB_DIR}/lib)
+  find_library(ETHERCAT_LIB NAMES ethercatd PATHS ${ETHERLAB_LOCAL_DIR}/lib)
   set(ETHERCAT_INTERFACE_COMPILE_DEFINITIONS
     ETHERCAT_INTERFACE_DPDK_USERMODE
     EC_USERMODE
     EC_ENABLE_DAEMON=0
   )
 else()
-  find_library(ETHERCAT_LIB ethercat HINTS ${ETHERLAB_DIR}/lib)
+  find_library(ETHERCAT_LIB NAMES ethercat PATHS ${ETHERLAB_LOCAL_DIR}/lib)
   set(ETHERCAT_INTERFACE_COMPILE_DEFINITIONS "")
 endif()
 
-if(NOT ETHERCAT_LIB)
-  message(FATAL_ERROR "EtherCAT library not found")
+if(NOT ETHERCAT_INCLUDE_DIR OR NOT ETHERCAT_LIB)
+  message(FATAL_ERROR
+    "Could not find the IgH EtherCAT master (ecrt.h / libethercat or libethercatd). "
+    "Looked in standard system paths and in ${ETHERLAB_LOCAL_DIR}.")
 endif()
 
 message(STATUS "EtherCAT library: ${ETHERCAT_LIB}")
@@ -43,7 +46,7 @@ message(STATUS "EtherCAT DPDK userspace mode: ${ETHERCAT_DPDK_USERMODE}")
 
 ament_export_include_directories(
   include
-  ${ETHERLAB_DIR}/include
+  ${ETHERCAT_INCLUDE_DIR}
 )
 
 add_library(
@@ -59,7 +62,7 @@ target_include_directories(
   ${PROJECT_NAME}
   PRIVATE
   include
-  ${ETHERLAB_DIR}/include
+  ${ETHERCAT_INCLUDE_DIR}
 )
 
 target_link_libraries(${PROJECT_NAME} ${ETHERCAT_LIB})
@@ -94,7 +97,7 @@ if(BUILD_TESTING)
     test_ec_pdo_channel_manager
     test/test_ec_pdo_channel_manager.cpp
   )
-  target_include_directories(test_ec_pdo_channel_manager PRIVATE include ${ETHERLAB_DIR}/include)
+  target_include_directories(test_ec_pdo_channel_manager PRIVATE include ${ETHERCAT_INCLUDE_DIR})
 
   target_link_libraries(test_ec_pdo_channel_manager
     ${PROJECT_NAME}
@@ -104,7 +107,7 @@ if(BUILD_TESTING)
     test_ec_master_userspace_init
     test/test_ec_master_userspace_init.cpp
   )
-  target_include_directories(test_ec_master_userspace_init PRIVATE include ${ETHERLAB_DIR}/include)
+  target_include_directories(test_ec_master_userspace_init PRIVATE include ${ETHERCAT_INCLUDE_DIR})
   target_link_libraries(test_ec_master_userspace_init
     ${PROJECT_NAME}
     yaml-cpp)
