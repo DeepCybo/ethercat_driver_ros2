@@ -320,5 +320,5 @@ TEST_F(EcCiA402DriveTest, EcWriteDefaultTargetPosition)
 
   EC_WRITE_S32(domain_address, 0);
   plugin_->processData(0, domain_address);
-  ASSERT_EQ(EC_READ_S32(domain_address), 654321);
+  ASSERT_EQ(EC_READ_S32(domain_address), 123456);
 }

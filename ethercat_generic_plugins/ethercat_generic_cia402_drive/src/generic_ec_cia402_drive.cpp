@@ -84,10 +84,15 @@ void EcCiA402Drive::processData(size_t entry_idx, uint8_t * domain_address)
   // setup current position as default position
   if (channel.index == CiA402D_RPDO_POSITION) {
     if (mode_of_operation_display_ != ModeOfOperation::MODE_NO_MODE &&
-      !std::isnan(last_position_))
+      !std::isnan(last_position_) && !default_position_latched_)
     {
       channel.default_value =
         channel.factor * last_position_ + channel.offset;
+      default_position_latched_ = true;
+      RCLCPP_INFO(
+        rclcpp::get_logger("EthercatDriver"),
+        "Latched startup position %.9f as the uncommanded CSP target",
+        last_position_);
     }
     channel.override_command =
       (mode_of_operation_display_ != ModeOfOperation::MODE_CYCLIC_SYNC_POSITION) ? true : false;
