@@ -166,6 +166,9 @@ public:
   /** call after adding all slaves, and before update */
   bool activate();
 
+  /** Select a configured slave as the distributed-clock reference. */
+  bool selectReferenceClock(uint16_t alias, uint16_t position);
+
   /** perform one EtherCAT cycle, passing the domain to the slaves */
   virtual void update(uint32_t domain = 0);
 

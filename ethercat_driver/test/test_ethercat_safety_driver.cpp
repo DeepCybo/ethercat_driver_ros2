@@ -48,6 +48,30 @@ TEST(TestEthercatDriverDpdkOptions, expectedSlaveWaitCountHandlesSingleMotorBehi
   EXPECT_EQ(ethercat_driver::expectedSlaveWaitCount(module_parameters), 2);
 }
 
+TEST(TestEthercatDriverDpdkOptions, ParsesExplicitDcReference)
+{
+  const std::unordered_map<std::string, std::string> parameters = {
+    {"dc_reference_alias", "2"},
+    {"dc_reference_position", "7"},
+  };
+  ethercat_driver::EthercatBusConfig config;
+
+  ASSERT_TRUE(ethercat_driver::configure_ethercat_bus_config(parameters, config));
+  EXPECT_TRUE(config.has_dc_reference);
+  EXPECT_EQ(config.dc_reference_alias, 2U);
+  EXPECT_EQ(config.dc_reference_position, 7U);
+}
+
+TEST(TestEthercatDriverDpdkOptions, RejectsOutOfRangeDcReference)
+{
+  const std::unordered_map<std::string, std::string> parameters = {
+    {"dc_reference_position", "65536"},
+  };
+  ethercat_driver::EthercatBusConfig config;
+
+  EXPECT_FALSE(ethercat_driver::configure_ethercat_bus_config(parameters, config));
+}
+
 TEST(TestEthercatSafetyDriver, getEcTransferModuleParam)
 {
   ethercat_driver::EthercatBusManager driver;

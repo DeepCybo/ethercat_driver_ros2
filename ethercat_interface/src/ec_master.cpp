@@ -258,6 +258,45 @@ void EcMaster::addSlave(EcSlave * slave)
   }
 }
 
+bool EcMaster::selectReferenceClock(uint16_t alias, uint16_t position)
+{
+#ifndef EC_HAVE_SELECT_REF_CLOCK
+  (void)alias;
+  (void)position;
+  printWarning("The installed EtherCAT master cannot select a DC reference clock.");
+  return false;
+#else
+  SlaveInfo * reference = nullptr;
+  for (auto & info : slave_info_) {
+    if (info.slave != nullptr && info.slave->alias_ == alias &&
+      info.slave->position_ == position)
+    {
+      reference = &info;
+      break;
+    }
+  }
+  if (reference == nullptr || reference->config == nullptr) {
+    printWarning(
+      "DC reference slave " + std::to_string(alias) + ":" +
+      std::to_string(position) + " is not configured.");
+    return false;
+  }
+
+  const int status = ecrt_master_select_reference_clock(master_, reference->config);
+  if (status != 0) {
+    printWarning(
+      "Failed to select DC reference slave " + std::to_string(alias) + ":" +
+      std::to_string(position) + ".");
+    return false;
+  }
+
+  RCLCPP_INFO(
+    rclcpp::get_logger("EthercatDriver"),
+    "Selected slave %u:%u as DC reference clock.", alias, position);
+  return true;
+#endif
+}
+
 int EcMaster::configSlaveSdo(
   uint16_t slave_position, SdoConfigEntry sdo_config,
   uint32_t * abort_code)

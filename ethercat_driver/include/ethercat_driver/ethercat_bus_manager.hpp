@@ -52,10 +52,17 @@ struct EthercatBusConfig
   bool create_userspace_master{false};
   bool wait_for_slaves{false};
   unsigned int wait_for_slave_count{0};
+  bool has_dc_reference{false};
+  unsigned int dc_reference_alias{0};
+  unsigned int dc_reference_position{0};
   double control_frequency{100.0};
   std::string transfer_config;
   std::string fsoe_config;
 };
+
+bool configure_ethercat_bus_config(
+  const std::unordered_map<std::string, std::string> & hardware_parameters,
+  EthercatBusConfig & bus_config);
 
 enum class EthercatCycleResult
 {

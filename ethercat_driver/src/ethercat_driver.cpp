@@ -99,6 +99,8 @@ ConfiguredEcModule make_configured_ec_module(
   return module;
 }
 
+}  // namespace
+
 bool configure_ethercat_bus_config(
   const std::unordered_map<std::string, std::string> & hardware_parameters,
   EthercatBusConfig & bus_config)
@@ -138,6 +140,19 @@ bool configure_ethercat_bus_config(
       hardware_parameters,
       "wait_for_slave_count",
       bus_config.wait_for_slave_count);
+    const auto dc_reference = hardware_parameters.find("dc_reference_position");
+    if (dc_reference != hardware_parameters.end()) {
+      bus_config.has_dc_reference = true;
+      bus_config.dc_reference_alias = uint_parameter_or_default(
+        hardware_parameters, "dc_reference_alias", 0);
+      bus_config.dc_reference_position = uint_parameter_or_default(
+        hardware_parameters, "dc_reference_position", 0);
+      if (bus_config.dc_reference_alias > std::numeric_limits<uint16_t>::max() ||
+        bus_config.dc_reference_position > std::numeric_limits<uint16_t>::max())
+      {
+        throw std::out_of_range("DC reference alias or position exceeds uint16 range");
+      }
+    }
   } catch (std::exception & e) {
     RCLCPP_FATAL(
       rclcpp::get_logger("EthercatDriver"), "Invalid EtherCAT master option (%s)!", e.what());
@@ -188,8 +203,6 @@ bool configure_ethercat_bus_config(
 
   return true;
 }
-
-}  // namespace
 
 CallbackReturn EthercatDriver::on_init(
   const hardware_interface::HardwareComponentInterfaceParams & params)

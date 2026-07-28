@@ -300,6 +300,17 @@ bool EthercatBusManager::configNetwork()
     master_->addSlave(ec_modules_[i].get());
   }
 
+  if (bus_config_.has_dc_reference && !master_->selectReferenceClock(
+      static_cast<uint16_t>(bus_config_.dc_reference_alias),
+      static_cast<uint16_t>(bus_config_.dc_reference_position)))
+  {
+    RCLCPP_ERROR(
+      rclcpp::get_logger("EthercatBusManager"),
+      "Configured DC reference slave %u:%u is unavailable.",
+      bus_config_.dc_reference_alias, bus_config_.dc_reference_position);
+    return false;
+  }
+
   // configure SDO
   for (auto i = 0ul; i < ec_modules_.size(); i++) {
     for (auto & sdo : ec_modules_[i]->sdo_config) {
