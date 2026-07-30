@@ -448,6 +448,19 @@ bool EcMaster::configuredSlavesReady()
   return true;
 }
 
+bool EcMaster::domainsReady() const
+{
+  if (domain_info_.empty()) {
+    return true;
+  }
+  for (const auto & entry : domain_info_) {
+    if (!entry.second || entry.second->domain_state.wc_state != EC_WC_COMPLETE) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void EcMaster::stop()
 {
   running_ = false;

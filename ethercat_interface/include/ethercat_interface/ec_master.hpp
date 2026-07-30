@@ -171,6 +171,9 @@ public:
   /** Return true after the expected topology has been fully scanned. */
   bool configuredSlavesReady();
 
+  /** Return true when every configured process-data domain has a complete WKC. */
+  bool domainsReady() const;
+
   /** Select a configured slave as the distributed-clock reference. */
   bool selectReferenceClock(uint16_t alias, uint16_t position);
 

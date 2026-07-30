@@ -389,7 +389,8 @@ bool EthercatBusManager::activateBus()
       isAllInit = isAllInit && module->initialized();
     }
     const bool slaves_ready = master_->configuredSlavesReady();
-    if (isAllInit && slaves_ready) {
+    const bool domains_ready = master_->domainsReady();
+    if (isAllInit && slaves_ready && domains_ready) {
       running = false;
     }
     struct timespec now;
@@ -397,7 +398,7 @@ bool EthercatBusManager::activateBus()
     if (running && now.tv_sec >= startup_deadline) {
       RCLCPP_ERROR(
         rclcpp::get_logger("EthercatBusManager"),
-        "EtherCAT startup timed out before %u slaves were scanned and initialized",
+        "EtherCAT startup timed out before %u slaves and all PDO domains were ready",
         bus_config_.wait_for_slave_count);
       master_->stop();
       return false;
