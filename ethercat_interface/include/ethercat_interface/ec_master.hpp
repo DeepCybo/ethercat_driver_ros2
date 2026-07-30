@@ -134,6 +134,8 @@ public:
     std::function<ec_master_t *(unsigned int)> masters_create;
     std::function<ec_master_t *(unsigned int)> request_master;
     std::function<int(ec_master_t *, int)> master_wait_for_slave;
+    std::function<int(ec_master_t *, ec_master_info_t *)> master_info;
+    std::function<int(ec_master_t *, uint16_t, ec_slave_info_t *)> master_get_slave;
     std::function<void(ec_master_t *)> release_master;
   };
 
@@ -166,8 +168,8 @@ public:
   /** call after adding all slaves, and before update */
   bool activate();
 
-  /** Wait for the configured number of slaves after master activation. */
-  bool waitForConfiguredSlaves();
+  /** Return true after the expected topology has been fully scanned. */
+  bool configuredSlavesReady();
 
   /** Select a configured slave as the distributed-clock reference. */
   bool selectReferenceClock(uint16_t alias, uint16_t position);

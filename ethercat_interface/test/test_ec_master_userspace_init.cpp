@@ -39,6 +39,8 @@ TEST(TestEcMasterUserspaceInit, CreatesUserspaceMasterBeforeRequestingMaster)
 {
   std::vector<std::string> calls;
   auto fake_master = reinterpret_cast<ec_master_t *>(0x1);
+  bool scan_busy = false;
+  uint8_t slave_state = EC_AL_STATE_PREOP;
 
   ethercat_interface::EcMasterEcrtApi api;
   api.masters_create = [&](unsigned int node_id) {
@@ -52,6 +54,22 @@ TEST(TestEcMasterUserspaceInit, CreatesUserspaceMasterBeforeRequestingMaster)
   api.master_wait_for_slave = [&](ec_master_t * master, int slave_count) {
       EXPECT_EQ(master, fake_master);
       calls.push_back("wait_for_slave:" + std::to_string(slave_count));
+      return 0;
+    };
+  api.master_info = [&](ec_master_t * master, ec_master_info_t * info) {
+      EXPECT_EQ(master, fake_master);
+      calls.push_back("master_info");
+      info->link_up = 1;
+      info->scan_busy = scan_busy;
+      info->slave_count = 1;
+      return 0;
+    };
+  api.master_get_slave = [&](
+    ec_master_t * master, uint16_t position, ec_slave_info_t * info) {
+      EXPECT_EQ(master, fake_master);
+      EXPECT_EQ(position, 0);
+      calls.push_back("master_get_slave:0");
+      info->al_state = slave_state;
       return 0;
     };
   api.release_master = [&](ec_master_t * master) {
@@ -68,16 +86,24 @@ TEST(TestEcMasterUserspaceInit, CreatesUserspaceMasterBeforeRequestingMaster)
   {
     ethercat_interface::EcMaster master(options, api);
     EXPECT_THAT(calls, ElementsAre("masters_create:0", "request_master:2"));
-    EXPECT_TRUE(master.waitForConfiguredSlaves());
+    calls.clear();
+    EXPECT_TRUE(master.configuredSlavesReady());
+    EXPECT_THAT(calls, ElementsAre("master_info", "master_get_slave:0"));
+
+    calls.clear();
+    scan_busy = true;
+    EXPECT_FALSE(master.configuredSlavesReady());
+    EXPECT_THAT(calls, ElementsAre("master_info"));
+
+    calls.clear();
+    scan_busy = false;
+    slave_state = EC_AL_STATE_INIT;
+    EXPECT_FALSE(master.configuredSlavesReady());
+    EXPECT_THAT(calls, ElementsAre("master_info", "master_get_slave:0"));
+    calls.clear();
   }
 
-  EXPECT_THAT(
-    calls,
-    ElementsAre(
-      "masters_create:0",
-      "request_master:2",
-      "wait_for_slave:1",
-      "release_master"));
+  EXPECT_THAT(calls, ElementsAre("release_master"));
 }
 
 TEST(TestEcMasterUserspaceInit, SkipsUserspaceCreateAndWaitWhenDisabled)

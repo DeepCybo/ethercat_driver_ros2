@@ -56,6 +56,17 @@ int defaultMasterWaitForSlave(ec_master_t * master, int slave_count)
 #endif
 }
 
+int defaultMasterInfo(ec_master_t * master, ec_master_info_t * info)
+{
+  return ecrt_master(master, info);
+}
+
+int defaultMasterGetSlave(
+  ec_master_t * master, uint16_t position, ec_slave_info_t * info)
+{
+  return ecrt_master_get_slave(master, position, info);
+}
+
 EcMaster::EcMasterOptions optionsForMasterId(unsigned int master_id)
 {
   EcMaster::EcMasterOptions options;
@@ -93,6 +104,8 @@ EcMaster::EcMasterEcrtApi EcMaster::defaultEcrtApi()
   api.masters_create = defaultMastersCreate;
   api.request_master = ecrt_request_master;
   api.master_wait_for_slave = defaultMasterWaitForSlave;
+  api.master_info = defaultMasterInfo;
+  api.master_get_slave = defaultMasterGetSlave;
   api.release_master = ecrt_release_master;
   return api;
 }
@@ -401,18 +414,36 @@ bool EcMaster::activate()
   return true;
 }
 
-bool EcMaster::waitForConfiguredSlaves()
+bool EcMaster::configuredSlavesReady()
 {
   if (wait_for_slave_count_ <= 0) {
     return true;
   }
-  if (!ecrt_api_.master_wait_for_slave) {
-    printWarning("Slave wait requested but no wait callback is available.");
+  if (!master_ || !ecrt_api_.master_info || !ecrt_api_.master_get_slave) {
     return false;
   }
-  if (ecrt_api_.master_wait_for_slave(master_, wait_for_slave_count_)) {
-    printWarning("Timed out while waiting for EtherCAT slaves.");
+
+  ec_master_info_t master_info = {};
+  if (ecrt_api_.master_info(master_, &master_info) || !master_info.link_up ||
+    master_info.scan_busy ||
+    master_info.slave_count != static_cast<unsigned int>(wait_for_slave_count_))
+  {
     return false;
+  }
+
+  ec_slave_info_t slave_info = {};
+  for (int position = 0; position < wait_for_slave_count_; ++position) {
+    if (ecrt_api_.master_get_slave(
+        master_, static_cast<uint16_t>(position), &slave_info))
+    {
+      return false;
+    }
+    if (slave_info.al_state != EC_AL_STATE_PREOP &&
+      slave_info.al_state != EC_AL_STATE_SAFEOP &&
+      slave_info.al_state != EC_AL_STATE_OP)
+    {
+      return false;
+    }
   }
   return true;
 }

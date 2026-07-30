@@ -356,14 +356,6 @@ bool EthercatBusManager::activateBus()
   }
   RCLCPP_INFO(rclcpp::get_logger("EthercatBusManager"), "Activated EcMaster!");
 
-  if (!master_->waitForConfiguredSlaves()) {
-    RCLCPP_ERROR(
-      rclcpp::get_logger("EthercatBusManager"),
-      "Expected EtherCAT slave scan did not complete after activation");
-    master_->stop();
-    return false;
-  }
-
   // Configure transfer network if transfer nets are defined
   if (!ec_transfer_nets_.empty()) {
     RCLCPP_INFO(rclcpp::get_logger("EthercatBusManager"), "Configuring transfer network...");
@@ -376,6 +368,7 @@ bool EthercatBusManager::activateBus()
   // fresh process data during the transition to OP.
   struct timespec t;
   clock_gettime(CLOCK_MONOTONIC, &t);
+  const time_t startup_deadline = t.tv_sec + 30;
   t.tv_nsec += master_->getInterval();
   while (t.tv_nsec >= 1000000000) {
     t.tv_nsec -= 1000000000;
@@ -395,8 +388,19 @@ bool EthercatBusManager::activateBus()
     for (auto & module : ec_modules_) {
       isAllInit = isAllInit && module->initialized();
     }
-    if (isAllInit) {
+    const bool slaves_ready = master_->configuredSlavesReady();
+    if (isAllInit && slaves_ready) {
       running = false;
+    }
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    if (running && now.tv_sec >= startup_deadline) {
+      RCLCPP_ERROR(
+        rclcpp::get_logger("EthercatBusManager"),
+        "EtherCAT startup timed out before %u slaves were scanned and initialized",
+        bus_config_.wait_for_slave_count);
+      master_->stop();
+      return false;
     }
     // calculate next shot. carry over nanoseconds into microseconds.
     t.tv_nsec += master_->getInterval();
