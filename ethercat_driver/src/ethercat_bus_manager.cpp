@@ -356,6 +356,14 @@ bool EthercatBusManager::activateBus()
   }
   RCLCPP_INFO(rclcpp::get_logger("EthercatBusManager"), "Activated EcMaster!");
 
+  if (!master_->waitForConfiguredSlaves()) {
+    RCLCPP_ERROR(
+      rclcpp::get_logger("EthercatBusManager"),
+      "Expected EtherCAT slave scan did not complete after activation");
+    master_->stop();
+    return false;
+  }
+
   // Configure transfer network if transfer nets are defined
   if (!ec_transfer_nets_.empty()) {
     RCLCPP_INFO(rclcpp::get_logger("EthercatBusManager"), "Configuring transfer network...");

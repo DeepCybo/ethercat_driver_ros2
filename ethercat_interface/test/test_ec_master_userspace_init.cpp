@@ -67,6 +67,8 @@ TEST(TestEcMasterUserspaceInit, CreatesUserspaceMasterBeforeRequestingMaster)
 
   {
     ethercat_interface::EcMaster master(options, api);
+    EXPECT_THAT(calls, ElementsAre("masters_create:0", "request_master:2"));
+    EXPECT_TRUE(master.waitForConfiguredSlaves());
   }
 
   EXPECT_THAT(

@@ -166,6 +166,9 @@ public:
   /** call after adding all slaves, and before update */
   bool activate();
 
+  /** Wait for the configured number of slaves after master activation. */
+  bool waitForConfiguredSlaves();
+
   /** Select a configured slave as the distributed-clock reference. */
   bool selectReferenceClock(uint16_t alias, uint16_t position);
 
@@ -306,6 +309,7 @@ protected:
   EcMasterEcrtApi ecrt_api_;
   ec_master_state_t master_state_ = {};
   bool active_ = false;
+  int wait_for_slave_count_ = 0;
 
   /** map from domain index to domain info */
   std::map<uint32_t, DomainInfo *> domain_info_;

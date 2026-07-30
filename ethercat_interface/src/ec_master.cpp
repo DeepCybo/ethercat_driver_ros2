@@ -108,7 +108,7 @@ EcMaster::EcMaster(const unsigned int master)
 }
 
 EcMaster::EcMaster(const EcMasterOptions & options, EcMasterEcrtApi api)
-: ecrt_api_(api)
+: ecrt_api_(api), wait_for_slave_count_(options.wait_for_slave_count)
 {
   if (options.create_userspace_master) {
     if (!ecrt_api_.masters_create) {
@@ -133,18 +133,6 @@ EcMaster::EcMaster(const EcMasterOptions & options, EcMasterEcrtApi api)
     return;
   }
 
-  if (options.wait_for_slave_count > 0) {
-    if (!ecrt_api_.master_wait_for_slave) {
-      printWarning("Slave wait requested but no wait callback is available.");
-      return;
-    }
-    const int wait_status = ecrt_api_.master_wait_for_slave(
-      master_, options.wait_for_slave_count);
-    if (wait_status) {
-      printWarning("Timed out while waiting for EtherCAT slaves.");
-      return;
-    }
-  }
   interval_ = 0;
 }
 
@@ -410,6 +398,22 @@ bool EcMaster::activate()
     }
   }
   active_ = true;
+  return true;
+}
+
+bool EcMaster::waitForConfiguredSlaves()
+{
+  if (wait_for_slave_count_ <= 0) {
+    return true;
+  }
+  if (!ecrt_api_.master_wait_for_slave) {
+    printWarning("Slave wait requested but no wait callback is available.");
+    return false;
+  }
+  if (ecrt_api_.master_wait_for_slave(master_, wait_for_slave_count_)) {
+    printWarning("Timed out while waiting for EtherCAT slaves.");
+    return false;
+  }
   return true;
 }
 
